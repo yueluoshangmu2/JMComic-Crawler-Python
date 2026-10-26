@@ -91,6 +91,9 @@ on:
 
 
 jobs:
+  # 注意：不要在根节点加 concurrency。
+  # 每次 workflow_dispatch 都会跑一次独立的 run，多人同时提交时 Actions 侧天然并发；
+  # 加了 concurrency 反而会让相同/未填 id 的提交互相排队甚至取消。
   crawler:
     runs-on: ubuntu-latest
     env:
