@@ -1,0 +1,50 @@
+name: bot-job
+on:
+  workflow_dispatch:
+    inputs:
+      chat_type:              # 回传目标类型：group 群 / c2c 私聊
+        required: true
+      openid:                 # 回传目标的 openid
+        required: true
+      user_cmd:               # 用户指令（bot.py 传来的消息内容）
+        required: true
+
+jobs:
+  run-task:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300      # 托管 runner 单个 job 上限约 6 小时
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 安装你的项目依赖
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      # 执行任务（换成你的项目实际入口和参数）
+      - name: 执行任务
+        run: python main.py "${{ github.event.inputs.user_cmd }}"
+
+      # 任务完成后，用 QQ OpenAPI 主动推送结果
+      - name: 回传结果给 QQ
+        env:
+          APP_ID: ${{ secrets.QQ_APP_ID }}
+          APP_SECRET: ${{ secrets.QQ_APP_SECRET }}
+          CHAT_TYPE: ${{ github.event.inputs.chat_type }}
+          OPENID: ${{ github.event.inputs.openid }}
+        run: |
+          TOKEN=$(curl -s -X POST https://api.bot.qq.com/app/getAppAccessToken \
+            -H "Content-Type: application/json" \
+            -d "{\"appId\":\"$APP_ID\",\"clientSecret\":\"$APP_SECRET\"}" | jq -r .access_token)
+          if [ "$CHAT_TYPE" = "group" ]; then
+            URL="https://api.bot.qq.com/v2/groups/$OPENID/messages"
+          else
+            URL="https://api.bot.qq.com/v2/users/$OPENID/messages"
+          fi
+          curl -s -X POST "$URL" \
+            -H "Authorization: QQBot $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"content":"任务完成","msg_type":0}'
