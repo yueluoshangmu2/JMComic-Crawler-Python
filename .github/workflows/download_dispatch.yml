@@ -1,5 +1,12 @@
 name: 下载JM本子 (dispatch)
 
+# 机器人通过 GitHub API 的 workflow_dispatch 触发本工作流。
+# 注意：dispatches 接口成功时只返回 204，没有响应体，也就没有 run_id。
+# 所以这里给每次运行起一个可识别的名字：
+#     run-name = jm-<本子id>-<RUN_TAG>
+# 机器人用 RUN_TAG 精确定位自己触发的那一次运行，之后轮询状态、下载产物并发回 QQ。
+run-name: jm-${{ inputs.JM_ALBUM_IDS }}-${{ inputs.RUN_TAG || 'manual' }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,6 +18,12 @@ on:
       JM_PHOTO_IDS:
         type: string
         description: 章节id（单独下载章节，多个id同上）
+        required: false
+
+      RUN_TAG:
+        type: string
+        description: 机器人使用：本次请求的唯一标记（手动运行可以留空）
+        default: ''
         required: false
 
       CLIENT_IMPL:
@@ -124,7 +137,7 @@ jobs:
           pip install -r .github/requirements-dev.txt
 
       - name: Install img2pdf
-        if: inputs.PDF_OPTION != '否'
+        if: ${{ inputs.PDF_OPTION != '' && inputs.PDF_OPTION != '否' }}
         run: |
           pip install img2pdf
 
@@ -176,3 +189,21 @@ jobs:
           path: ${{ env.JM_DOWNLOAD_DIR }}/${{ env.ZIP_NAME }}
           if-no-files-found: warn
           retention-days: 90
+
+      # 运行页摘要，便于在 Actions 页面一眼看到本次下载了什么
+      - name: 写入运行摘要
+        if: always()
+        run: |
+          {
+            echo "### 下载 JM 本子"
+            echo ""
+            echo "- 本子ID：\`${JM_ALBUM_IDS:-（未填写）}\`"
+            echo "- 章节ID：\`${JM_PHOTO_IDS:-（未填写）}\`"
+            echo "- 运行标记：\`${{ inputs.RUN_TAG }}\`"
+            echo "- 压缩包：\`$ZIP_NAME\`"
+            if [ -f "$JM_DOWNLOAD_DIR/$ZIP_NAME" ]; then
+              echo "- 大小：$(du -h "$JM_DOWNLOAD_DIR/$ZIP_NAME" | cut -f1)"
+            else
+              echo "- 状态：没有生成压缩包（下载为空或失败）"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
